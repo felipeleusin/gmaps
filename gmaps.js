@@ -13,6 +13,7 @@ var GMaps = (function() {
   var getElementById = function(id) { return doc.getElementById(id) };
 
   var GMaps = function(options) {
+    GMaps.init();
     var self = this;
     window.context_menu = {};
 
@@ -849,6 +850,7 @@ var GMaps = (function() {
   };
 
   GMaps.Route = function(options) {
+  	GMaps.init();
     this.map = options.map;
     this.route = options.route;
     this.step_count = 0;
@@ -889,6 +891,7 @@ var GMaps = (function() {
 
   // Geolocation (Modern browsers only)
   GMaps.geolocate = function(options) {
+  	GMaps.init();
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(function(position) {
         options.success(position);
@@ -912,6 +915,7 @@ var GMaps = (function() {
 
   // Geocoding
   GMaps.geocode = function(options) {
+  	GMaps.init();
     this.geocoder = new google.maps.Geocoder();
     var callback = options.callback;
     if (options.lat && options.lng) {
@@ -1088,75 +1092,82 @@ var GMaps = (function() {
     return static_root + parameters;
   };
 
-  //==========================
-  // Polygon containsLatLng
-  // https://github.com/tparkin/Google-Maps-Point-in-Polygon
-  // Poygon getBounds extension - google-maps-extensions
-  // http://code.google.com/p/google-maps-extensions/source/browse/google.maps.Polygon.getBounds.js
-  if (!google.maps.Polygon.prototype.getBounds) {
-    google.maps.Polygon.prototype.getBounds = function(latLng) {
-      var bounds = new google.maps.LatLngBounds();
-      var paths = this.getPaths();
-      var path;
+  GMaps.init = function() {
+		if ( GMaps.initRun ) {
+			return;
+		}
 
-      for (var p = 0; p < paths.getLength(); p++) {
-        path = paths.getAt(p);
-        for (var i = 0; i < path.getLength(); i++) {
-          bounds.extend(path.getAt(i));
-        }
-      }
+	  //==========================
+	  // Polygon containsLatLng
+	  // https://github.com/tparkin/Google-Maps-Point-in-Polygon
+	  // Poygon getBounds extension - google-maps-extensions
+	  // http://code.google.com/p/google-maps-extensions/source/browse/google.maps.Polygon.getBounds.js
+	  if (!google.maps.Polygon.prototype.getBounds) {
+	    google.maps.Polygon.prototype.getBounds = function(latLng) {
+	      var bounds = new google.maps.LatLngBounds();
+	      var paths = this.getPaths();
+	      var path;
 
-      return bounds;
-    };
+	      for (var p = 0; p < paths.getLength(); p++) {
+	        path = paths.getAt(p);
+	        for (var i = 0; i < path.getLength(); i++) {
+	          bounds.extend(path.getAt(i));
+	        }
+	      }
+
+	      return bounds;
+	    };
+	  }
+
+	  // Polygon containsLatLng - method to determine if a latLng is within a polygon
+	  google.maps.Polygon.prototype.containsLatLng = function(latLng) {
+	    // Exclude points outside of bounds as there is no way they are in the poly
+	    var bounds = this.getBounds();
+
+	    if (bounds !== null && !bounds.contains(latLng)) {
+	      return false;
+	    }
+
+	    // Raycast point in polygon method
+	    var inPoly = false;
+
+	    var numPaths = this.getPaths().getLength();
+	    for (var p = 0; p < numPaths; p++) {
+	      var path = this.getPaths().getAt(p);
+	      var numPoints = path.getLength();
+	      var j = numPoints - 1;
+
+	      for (var i = 0; i < numPoints; i++) {
+	        var vertex1 = path.getAt(i);
+	        var vertex2 = path.getAt(j);
+
+	        if (vertex1.lng() < latLng.lng() && vertex2.lng() >= latLng.lng() || vertex2.lng() < latLng.lng() && vertex1.lng() >= latLng.lng()) {
+	          if (vertex1.lat() + (latLng.lng() - vertex1.lng()) / (vertex2.lng() - vertex1.lng()) * (vertex2.lat() - vertex1.lat()) < latLng.lat()) {
+	            inPoly = !inPoly;
+	          }
+	        }
+
+	        j = i;
+	      }
+	    }
+
+	    return inPoly;
+	  };
+
+	  google.maps.LatLngBounds.prototype.containsLatLng = function(latLng) {
+	    return this.contains(latLng);
+	  };
+
+	  google.maps.Marker.prototype.setFences = function(fences) {
+	    this.fences = fences;
+	  };
+
+	  google.maps.Marker.prototype.addFence = function(fence) {
+	    this.fences.push(fence);
+	  };
+
+	  GMaps.initRun = true;
   }
-
-  // Polygon containsLatLng - method to determine if a latLng is within a polygon
-  google.maps.Polygon.prototype.containsLatLng = function(latLng) {
-    // Exclude points outside of bounds as there is no way they are in the poly
-    var bounds = this.getBounds();
-
-    if (bounds !== null && !bounds.contains(latLng)) {
-      return false;
-    }
-
-    // Raycast point in polygon method
-    var inPoly = false;
-
-    var numPaths = this.getPaths().getLength();
-    for (var p = 0; p < numPaths; p++) {
-      var path = this.getPaths().getAt(p);
-      var numPoints = path.getLength();
-      var j = numPoints - 1;
-
-      for (var i = 0; i < numPoints; i++) {
-        var vertex1 = path.getAt(i);
-        var vertex2 = path.getAt(j);
-
-        if (vertex1.lng() < latLng.lng() && vertex2.lng() >= latLng.lng() || vertex2.lng() < latLng.lng() && vertex1.lng() >= latLng.lng()) {
-          if (vertex1.lat() + (latLng.lng() - vertex1.lng()) / (vertex2.lng() - vertex1.lng()) * (vertex2.lat() - vertex1.lat()) < latLng.lat()) {
-            inPoly = !inPoly;
-          }
-        }
-
-        j = i;
-      }
-    }
-
-    return inPoly;
-  };
-
-  google.maps.LatLngBounds.prototype.containsLatLng = function(latLng) {
-    return this.contains(latLng);
-  };
-
-  google.maps.Marker.prototype.setFences = function(fences) {
-    this.fences = fences;
-  };
-
-  google.maps.Marker.prototype.addFence = function(fence) {
-    this.fences.push(fence);
-  };
-
   return GMaps;
 }());
 
